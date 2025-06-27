@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:16
+    env_file: .env.postgres
+    networks:
+      - app-network
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    command: server /data
+    env_file: .env.minio
+    networks:
+      - app-network
+    expose:
+      - "9000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    image: ${DOCKERHUB_USERNAME}/${BACKEND_IMAGE}:staging
+    env_file: .env.backend
+    networks:
+      - app-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api-tests:
+    image: ${DOCKERHUB_USERNAME}/${API_TESTS_IMAGE}
+    env_file: .env.tests
+    networks:
+      - app-network
+    depends_on:
+      backend:
+        condition: service_healthy
+
+networks:
+  app-network:
+    driver: bridge
